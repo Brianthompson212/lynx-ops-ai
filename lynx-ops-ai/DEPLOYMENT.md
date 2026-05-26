@@ -12,7 +12,7 @@ Create a new Render Web Service from this repository.
 Use these settings:
 
 ```text
-Root Directory: server
+Root Directory: lynx-ops-ai/server
 Build Command: npm install
 Start Command: npm start
 ```
@@ -52,7 +52,7 @@ Use these settings:
 
 ```text
 Framework Preset: Vite
-Root Directory: client
+Root Directory: lynx-ops-ai/client
 Build Command: npm run build
 Output Directory: dist
 Install Command: npm install
