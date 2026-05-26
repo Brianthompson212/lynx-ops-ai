@@ -2350,7 +2350,7 @@ function App() {
     )
   }
 
-  if (currentPortal === 'coach' && !['coach', 'admin'].includes(userSession.profile?.role)) {
+  if (currentPortal === 'coach' && coachSection !== 'admin' && !['coach', 'admin'].includes(userSession.profile?.role)) {
     openUserLogin('coach')
     return null
   }
