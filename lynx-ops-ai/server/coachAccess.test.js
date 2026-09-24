@@ -13,3 +13,10 @@ test('disabled, incorrect and malformed credentials cannot authenticate', () => 
     assert.equal(configuredCoachLogin(username, password, config), null)
   }
 })
+
+test('fallback rejects incorrect passwords and can be disabled or replaced', () => {
+  assert.equal(configuredCoachLogin('Lynxcoach', 'wrong', {}), null)
+  assert.equal(configuredCoachLogin('Lynxcoach', 'wrong', { COACH_LOGIN_DISABLED: 'true' }), null)
+  assert.equal(configuredCoachLogin('TestCoach', 'test-only-secret', { ...env, COACH_LOGIN_DISABLED: 'true' }), null)
+  assert.equal(configuredCoachLogin('Lynxcoach', 'test-only-secret', env), null)
+})
