@@ -37,11 +37,15 @@ export default function FlagScoreboard({ team, updateTeam }) {
 
   function beginEvent(type, side = 'own', points) {
     setError(''); setCorrection(null)
-    setDraft({ type, side, points: points ?? (type === 'td' ? 6 : type === 'extraPoint' ? 1 : 0), playerId: '', assistId: '', note: '' })
+    setDraft({ type, side, points: points ?? (type === 'td' ? 6 : type === 'extraPoint' ? 1 : 0), playerId: '', assistId: '', wantsAssist: null, note: '' })
   }
 
   function saveEvent() {
     try {
+      if (draft.side === 'own' && draft.type !== 'adjustment' && draft.playerId) {
+        if (draft.wantsAssist == null) throw new Error('Choose Yes or No for an assist.')
+        if (draft.wantsAssist && !draft.assistId) throw new Error('Choose who assisted, or select No.')
+      }
       const next = saveGameEvent(game, draft, players, archived ? game.clock : team.clock)
       updateGame(next); setDraft(null); setError(''); setMessage(draft.id ? 'Play updated.' : draft.type === 'flagPull' ? 'Flag pull recorded.' : 'Score added.')
     } catch (err) { setError(err.message) }
@@ -111,14 +115,22 @@ export default function FlagScoreboard({ team, updateTeam }) {
       {draft.side === 'own' && draft.type !== 'adjustment' && <>
         {draft.type !== 'flagPull' && <h4>Who scored?</h4>}
         <div className="ff-player-picks" aria-label="Choose player">
-          {creditPlayers.map((p) => <button type="button" key={p.id} aria-pressed={draft.playerId === p.id} onClick={() => setDraft({ ...draft, playerId: p.id, assistId: draft.assistId === p.id ? '' : draft.assistId })}><strong>{p.number ? '#' + p.number + ' ' : ''}{p.name}</strong><small>{!archived && active.has(p.id) ? 'On field' : !p.available ? 'Not playing today' : ''}</small></button>)}
-          <button type="button" aria-pressed={!draft.playerId} onClick={() => setDraft({ ...draft, playerId: '' })}>Credit later</button>
+          {creditPlayers.map((p) => <button type="button" key={p.id} aria-pressed={draft.playerId === p.id} onClick={() => setDraft({ ...draft, playerId: p.id, assistId: draft.assistId === p.id ? '' : draft.assistId, wantsAssist: draft.playerId === p.id ? draft.wantsAssist : null })}><strong>{p.number ? '#' + p.number + ' ' : ''}{p.name}</strong><small>{!archived && active.has(p.id) ? 'On field' : !p.available ? 'Not playing today' : ''}</small></button>)}
+          <button type="button" aria-pressed={!draft.playerId} onClick={() => setDraft({ ...draft, playerId: '', assistId: '', wantsAssist: null })}>Credit later</button>
         </div>
+        {draft.playerId && <section className="ff-assist-prompt" aria-label="Assist details">
+          <h4>Was there an assist?</h4>
+          <div className="ff-switch"><button type="button" aria-pressed={draft.wantsAssist === false} onClick={() => { setDraft({ ...draft, wantsAssist: false, assistId: '' }); setError('') }}>No</button><button type="button" aria-pressed={draft.wantsAssist === true} onClick={() => { setDraft({ ...draft, wantsAssist: true }); setError('') }}>Yes</button></div>
+          {draft.wantsAssist && <>
+            <h4>{draft.type === 'flagPull' ? 'Who helped pull the flag?' : 'Who assisted?'}</h4>
+            <div className="ff-player-picks" aria-label="Choose assist player">{creditPlayers.filter((p) => p.id !== draft.playerId).map((p) => <button type="button" key={p.id} aria-pressed={draft.assistId === p.id} onClick={() => { setDraft({ ...draft, assistId: p.id }); setError('') }}><strong>{p.number ? '#' + p.number + ' ' : ''}{p.name}</strong></button>)}</div>
+            {creditPlayers.filter((p) => p.id !== draft.playerId).length === 0 && <p className="ff-hint">Add another player to your roster to credit an assist, or choose No.</p>}
+          </>}
+        </section>}
       </>}
-      <details className="ff-game-settings"><summary>More details · assist, note, or custom points</summary><div className="ff-dialog-fields">
-        {draft.side === 'own' && draft.type !== 'adjustment' && <label>Assist (optional)<select value={draft.assistId} onChange={(e) => setDraft({ ...draft, assistId: e.target.value })}><option value="">No assist</option>{creditPlayers.filter((p) => p.id !== draft.playerId).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}
+      <details className="ff-game-settings"><summary>More details · note or custom points</summary><div className="ff-dialog-fields">
         <label>Play type<select value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value, points: e.target.value === 'td' ? 6 : e.target.value === 'extraPoint' ? 1 : 0 })}>{Object.entries(GAME_EVENT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-        <label>Team<select value={draft.side} onChange={(e) => setDraft({ ...draft, side: e.target.value, playerId: '', assistId: '' })}><option value="own">{team.name}</option><option value="opponent">{game.opponent || 'Opponent'}</option></select></label>
+        <label>Team<select value={draft.side} onChange={(e) => setDraft({ ...draft, side: e.target.value, playerId: '', assistId: '', wantsAssist: null })}><option value="own">{team.name}</option><option value="opponent">{game.opponent || 'Opponent'}</option></select></label>
         {draft.type !== 'flagPull' && <label>Points<input type="number" inputMode="numeric" step="1" value={draft.points} onChange={(e) => setDraft({ ...draft, points: e.target.value })} /></label>}
         <label>Note (optional)<input maxLength={300} value={draft.note} onChange={(e) => setDraft({ ...draft, note: e.target.value })} /></label>
       </div></details>
@@ -148,7 +160,7 @@ export default function FlagScoreboard({ team, updateTeam }) {
       <ol className="ff-game-log">{game.events.slice().reverse().map((event) => <li className={event.voided ? 'ff-voided' : ''} key={event.id}>
         <div><strong>{GAME_EVENT_LABELS[event.type]} · {event.side === 'own' ? team.name : game.opponent} {event.voided ? '· Removed' : ''}</strong>
           <p>{duration(event.clock)} · {event.points > 0 ? '+' : ''}{event.points} points{event.playerId ? ` · ${event.playerName}` : event.side === 'own' && event.type !== 'adjustment' ? ' · Credit unassigned' : ''}{event.assistId ? ` · Assist: ${event.assistName}` : ''}</p>{event.note && <p>{event.note}</p>}</div>
-        <div className="ff-row"><button type="button" aria-label={`Edit ${GAME_EVENT_LABELS[event.type]} at ${duration(event.clock)}`} onClick={() => { setDraft({ ...event }); setCorrection(null); setError('') }}>Edit</button>
+        <div className="ff-row"><button type="button" aria-label={`Edit ${GAME_EVENT_LABELS[event.type]} at ${duration(event.clock)}`} onClick={() => { setDraft({ ...event, wantsAssist: Boolean(event.assistId) }); setCorrection(null); setError('') }}>Edit</button>
           <button type="button" aria-label={`${event.voided ? 'Restore' : 'Remove'} ${GAME_EVENT_LABELS[event.type]} at ${duration(event.clock)}`} onClick={() => {
             try { updateGame(toggleGameEvent(game, event.id)); setDraft(null); setError('') } catch (err) { setError(err.message) }
           }}>{event.voided ? 'Restore' : 'Remove'}</button></div>
