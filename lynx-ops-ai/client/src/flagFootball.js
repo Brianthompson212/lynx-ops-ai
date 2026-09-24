@@ -1,3 +1,5 @@
+import { makeGame } from './flagGame.js'
+
 export const FLAG_STORAGE_KEY = 'lynx-flag-football-v1'
 export const OFFENSE_ROLES = ['X', 'Y', 'Z', 'C', 'Q']
 export const DEFENSE_ROLES = ['FS', 'SS', 'RCB', 'LCB', 'RLB', 'LLB']
@@ -22,6 +24,7 @@ export function makeTeam(name) {
     id: crypto.randomUUID(), name, players: [], formations: [offense],
     side: 'offense', formationIds: { offense: offense.id, defense: '' }, assignments: {},
     plays: [], selectedPlayId: '', drives: [], selectedDriveId: '', selectedEntryId: '', clock: 0,
+    game: makeGame(), gameHistory: [],
   }
 }
 
@@ -62,6 +65,19 @@ export function tickTeam(team, seconds) {
       benchSeconds: p.benchSeconds + (active.has(p.id) ? 0 : seconds),
     }),
   }
+}
+
+// Persist the time anchor so navigation, browser throttling and reloads cannot pause a game.
+export function settleTeamClock(team, now = Date.now()) {
+  if (!team.timerRunning || !Number.isFinite(team.timerUpdatedAt)) return team
+  const seconds = Math.max(0, Math.floor((now - team.timerUpdatedAt) / 1000))
+  if (!seconds) return team
+  return { ...tickTeam(team, seconds), timerUpdatedAt: team.timerUpdatedAt + seconds * 1000 }
+}
+
+export function setTeamClockRunning(team, running, now = Date.now()) {
+  const settled = settleTeamClock(team, now)
+  return { ...settled, timerRunning: running, timerUpdatedAt: running && team.timerRunning ? settled.timerUpdatedAt : now }
 }
 
 export function selectPlay(team, playId, entryId = '') {

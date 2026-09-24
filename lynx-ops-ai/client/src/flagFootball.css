@@ -74,6 +74,28 @@ details.ff-panel { display: block; }
 .ff-call-inputs { display: grid; grid-template-columns: 1fr 1.5fr 1fr .7fr; gap: 12px; }
 .ff-empty { margin: 20px 0 !important; padding: 30px; text-align: center; background: #f5f0f9; border: 1px dashed #cdbfdd; border-radius: 12px; color: #776488; }
 .ff-player-editor { border-top: 1px solid var(--ff-border); padding-top: 16px; display: grid; gap: 12px; }
+.ff-scoring { border: 1px solid #d9c694; border-radius: 14px; padding: 16px; background: #faf4e6; display: grid; gap: 14px; min-width: 0; }
+.ff-score-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.ff-score-heading label { width: min(330px, 55%); }
+.ff-score-display { display: grid; grid-template-columns: 1fr 40px 1fr; align-items: center; text-align: center; background: #36204f; padding: 12px; border-radius: 12px; color: #fff; }
+.ff-score-display > div { display: grid; gap: 4px; min-width: 0; }
+.ff-score-display > div > span { font-size: .95rem; overflow-wrap: anywhere; }
+.ff-score-display strong { font-size: 3rem; line-height: 1.1; color: #ffe08a; font-variant-numeric: tabular-nums; }
+.ff-score-vs { font-size: .8rem; color: #dacbea; }
+.ff-score-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.ff-score-actions button { flex: 1 1 135px; font-size: .82rem; }
+.ff-game-log { display: grid; gap: 10px; list-style: none; padding: 0; margin: 0; max-height: 420px; overflow: auto; }
+.ff-game-log li { border-bottom: 1px solid var(--ff-border); padding: 10px 0; display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.ff-game-log li > div:first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.ff-game-log p { font-size: .8rem; line-height: 1.6; color: #70647b; }
+.ff-game-log .ff-voided { background: #eee9ed; border-radius: 8px; padding: 10px; }
+.ff-stats-scroll { overflow-x: auto; max-width: 100%; }
+.ff-stats-table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+.ff-stats-table th, .ff-stats-table td { padding: 10px; text-align: center; border-bottom: 1px solid #e2d9e8; color: var(--ff-ink); }
+.ff-stats-table th:first-child { text-align: left; min-width: 130px; }
+.ff-stats-table thead, .ff-stats-table tfoot { background: #eee5f5; }
+.ff-game-settings summary { font-size: .85rem; cursor: pointer; font-weight: 650; }
+.ff-game-settings[open] { display: grid; gap: 12px; }
 .ff-board section > .ff-row { margin-bottom: 16px; }
 @media (max-width: 900px) {
   .ff-game-grid { grid-template-columns: 1fr; }
@@ -95,4 +117,8 @@ details.ff-panel { display: block; }
   .ff-time-list > div { grid-template-columns: 1fr 1fr; }
   .ff-call-inputs { grid-template-columns: 1fr; }
   .ff-panel { padding: 12px; }
+  .ff-scoring { padding: 10px; }
+  .ff-score-heading { flex-direction: column; align-items: stretch; }
+  .ff-score-heading label { width: 100%; }
+  .ff-game-log li { align-items: stretch; flex-direction: column; }
 }

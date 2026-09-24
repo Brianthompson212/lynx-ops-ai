@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { FLAG_STORAGE_KEY, OFFENSE_ROLES, DEFENSE_ROLES, ROUTE_COLORS, makeBoard, makeTeam, makePlayer, makeFormation, makePlay, makeDriveEntry, activePlayerIds, assignPlayer, tickTeam, selectPlay, callLabel, duration, putUpload, getUpload } from './flagFootball'
+import { FLAG_STORAGE_KEY, OFFENSE_ROLES, DEFENSE_ROLES, ROUTE_COLORS, makeBoard, makeTeam, makePlayer, makeFormation, makePlay, makeDriveEntry, activePlayerIds, assignPlayer, settleTeamClock, setTeamClockRunning, selectPlay, callLabel, duration, putUpload, getUpload } from './flagFootball'
 import './flagFootball.css'
+import FlagScoreboard from './FlagScoreboard'
+import { makeGame } from './flagGame'
 
 function readBoard() {
   try {
@@ -8,6 +10,7 @@ function readBoard() {
     if (!raw) return { board: makeBoard(), error: '' }
     const board = JSON.parse(raw)
     if (board.version !== 1 || !board.teams?.length || !board.teams.every((team) => Array.isArray(team.players) && Array.isArray(team.formations) && Array.isArray(team.plays) && Array.isArray(team.drives) && team.formationIds && team.assignments)) throw new Error('Invalid board')
+    board.teams = board.teams.map((team) => settleTeamClock({ ...team, game: team.game || makeGame(), gameHistory: team.gameHistory || [] }))
     return { board, error: '' }
   } catch {
     return { board: null, error: 'Your saved flag football board could not be read. It has not been overwritten. Reload or restore browser data before continuing.' }
@@ -81,7 +84,6 @@ export default function FlagFootballBoard({ rosters }) {
   const [saveError, setSaveError] = useState(initial.error)
   const [notice, setNotice] = useState('')
   const [tab, setTab] = useState('field')
-  const [running, setRunning] = useState(false)
   const [selectedRole, setSelectedRole] = useState('')
   const [editMode, setEditMode] = useState('view')
   const [teamName, setTeamName] = useState('')
@@ -110,25 +112,32 @@ export default function FlagFootballBoard({ rosters }) {
   }, [board])
 
   useEffect(() => {
-    if (!running || !teamId || tab !== 'field') return undefined
-    let last = Date.now()
     const timer = window.setInterval(() => {
-      const seconds = Math.floor((Date.now() - last) / 1000)
-      if (seconds < 1) return
-      last += seconds * 1000
-      setBoard((current) => ({ ...current, teams: current.teams.map((t) => t.id === teamId ? tickTeam(t, seconds) : t) }))
+      const now = Date.now()
+      setBoard((current) => {
+        if (!current) return current
+        const teams = current.teams.map((t) => settleTeamClock(t, now))
+        return teams.some((t, i) => t !== current.teams[i]) ? { ...current, teams } : current
+      })
     }, 250)
     return () => window.clearInterval(timer)
-  }, [running, teamId, tab])
+  }, [])
 
-  const updateTeam = (change, id = teamId) => setBoard((current) => ({ ...current, teams: current.teams.map((t) => t.id === id ? (typeof change === 'function' ? change(t) : { ...t, ...change }) : t) }))
+  const updateTeam = (change, id = teamId) => {
+    const now = Date.now()
+    setBoard((current) => ({ ...current, teams: current.teams.map((t) => {
+      if (t.id !== id) return t
+      const settled = settleTeamClock(t, now)
+      return typeof change === 'function' ? change(settled) : { ...settled, ...change }
+    }) }))
+  }
   const updatePlay = (change) => updateTeam((t) => ({ ...t, plays: t.plays.map((p) => p.id === play?.id ? { ...p, ...change } : p) }))
   const updateEntry = (change) => updateTeam((t) => ({ ...t, drives: t.drives.map((d) => d.id === drive?.id ? { ...d, entries: d.entries.map((e) => e.id === entry?.id ? { ...e, ...change } : e) } : d) }))
   const resetInteraction = () => { setSelectedRole(''); setEditMode('view'); setNotice('') }
   const showPlay = (id, entryId = '') => { updateTeam((t) => selectPlay(t, id, entryId)); resetInteraction(); setTab('field') }
   const changeSide = (side) => { updateTeam({ side, selectedPlayId: '', selectedEntryId: '' }); resetInteraction(); setFormationRoles([]) }
   const changeFormation = (id) => { updateTeam({ formationIds: { ...team.formationIds, [team.side]: id }, selectedPlayId: '', selectedEntryId: '' }); resetInteraction() }
-  const changeTab = (next) => { setTab(next); setEditMode('view'); setRunning(false) }
+  const changeTab = (next) => { setTab(next); setEditMode('view') }
 
   function addFormation() {
     const roles = team.side === 'offense' ? OFFENSE_ROLES : DEFENSE_ROLES.filter((r) => formationRoles.includes(r))
@@ -206,9 +215,13 @@ export default function FlagFootballBoard({ rosters }) {
   return <section className="ff-board" aria-label="Flag football 5v5 coaching board">
     <header className="ff-header">
       <div><p className="eyebrow">LYNX SIDELINE</p><h2>Flag Football <span className="ff-badge">5v5</span></h2><p>Positions, plays, and your next drive.</p></div>
-      <label>Active team<select aria-label="Active flag football team" value={team.id} onChange={(e) => { setRunning(false); setBoard((b) => ({ ...b, selectedTeamId: e.target.value })); resetInteraction(); setPlayerName(''); setPlayerNumber(''); setRosterKey(''); setFormationName(''); setFormationRoles([]); setDriveName('') }}>{board.teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+      <label>Active team<select aria-label="Active flag football team" value={team.id} onChange={(e) => { setBoard((b) => ({ ...b, selectedTeamId: e.target.value })); resetInteraction(); setPlayerName(''); setPlayerNumber(''); setRosterKey(''); setFormationName(''); setFormationRoles([]); setDriveName('') }}>{board.teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
     </header>
-    <p className="ff-storage">Saved on this browser and device. Switching teams pauses the timer and restores that team’s setup.</p>
+    <div className="ff-toolbar"><div className="ff-clock"><span>{team.name} · {team.timerRunning ? 'Running' : 'Stopped'}</span><strong>{duration(team.clock)}</strong><button type="button" onClick={() => updateTeam((t) => setTeamClockRunning(t, !t.timerRunning))}>{team.timerRunning ? 'Stop timer' : 'Start timer'}</button></div>
+      {board.teams.filter((t) => t.id !== team.id && t.timerRunning).map((t) => <span key={t.id}>{t.name} timer running · {duration(t.clock)} <button type="button" onClick={() => updateTeam((current) => setTeamClockRunning(current, false), t.id)}>Stop {t.name} timer</button></span>)}
+    </div>
+    <FlagScoreboard key={team.id} team={team} updateTeam={updateTeam} />
+    <p className="ff-storage">Saved on this browser and device. Started timers keep running across views, team switches, and reloads until you stop them or finish/reset the game.</p>
     {saveError && <p role="alert" className="ff-error">{saveError}</p>}
     {notice && <p role="status" className="ff-notice">{notice}</p>}
     <nav className="ff-tabs" aria-label="Flag football views">{[['field', 'Game board'], ['playbook', `Playbook · ${team.plays.length}/20`], ['drives', 'Drive cards'], ['team', 'Teams & players']].map(([key, label]) => <button type="button" key={key} aria-pressed={tab === key} onClick={() => changeTab(key)}>{label}</button>)}</nav>
@@ -217,7 +230,6 @@ export default function FlagFootballBoard({ rosters }) {
       <div className="ff-toolbar">
         <div className="ff-switch">{['offense', 'defense'].map((side) => <button key={side} type="button" aria-pressed={team.side === side} onClick={() => changeSide(side)}>{side === 'offense' ? 'Offense' : 'Defense'}</button>)}</div>
         <label>Formation<select value={formation?.id || ''} onChange={(e) => changeFormation(e.target.value)}><option value="" disabled>Choose five defensive positions</option>{team.formations.filter((f) => f.side === team.side).map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}</select></label>
-        <div className="ff-clock"><strong>{duration(team.clock)}</strong><button type="button" onClick={() => setRunning(!running)}>{running ? 'Pause' : 'Start timer'}</button></div>
       </div>
       <details className="ff-panel" open={!formation ? true : undefined}><summary>Create {team.side === 'offense' ? 'an offensive' : 'a defensive'} formation</summary><div className="ff-row"><label>Formation name<input value={formationName} maxLength={50} onChange={(e) => setFormationName(e.target.value)} placeholder={team.side === 'defense' ? 'e.g. Two safeties' : 'e.g. Trips right'} /></label>{team.side === 'defense' ? <fieldset><legend>Choose exactly five positions ({formationRoles.length}/5)</legend><div className="ff-checks">{DEFENSE_ROLES.map((role) => <label key={role}><input type="checkbox" checked={formationRoles.includes(role)} disabled={formationRoles.length === 5 && !formationRoles.includes(role)} onChange={(e) => setFormationRoles(e.target.checked ? [...formationRoles, role] : formationRoles.filter((r) => r !== role))} />{role}</label>)}</div></fieldset> : <p>X · Y · Z · C · Q</p>}<button type="button" disabled={!formationName.trim() || (team.side === 'defense' && formationRoles.length !== 5)} onClick={addFormation}>Save formation</button></div></details>
       <div className="ff-toolbar"><label>Show play<select value={play?.id || ''} onChange={(e) => e.target.value ? showPlay(e.target.value) : (updateTeam({ selectedPlayId: '', selectedEntryId: '' }), resetInteraction())}><option value="">Formation only</option>{team.plays.filter((p) => team.formations.find((f) => f.id === p.formationId)?.side === team.side).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label><button type="button" disabled={!formation || team.plays.length >= 20} onClick={addPlay}>+ Create play</button>{entry && <button type="button" onClick={() => {
@@ -229,7 +241,7 @@ export default function FlagFootballBoard({ rosters }) {
       <div className="ff-game-grid">
         <div>
           <Field formation={formation} assignments={assignments} players={team.players} play={play} entry={entry} selectedRole={selectedRole} setSelectedRole={setSelectedRole} editMode={editMode} onPoint={onPoint} />
-          <div className="ff-tools"><label>Field tool<select aria-label="Field tool" value={editMode} onChange={(e) => { setRunning(false); setEditMode(e.target.value) }}><option value="view">Select & substitute</option><option value="position">Move starting positions</option><option value="route" disabled={!play}>Draw base route</option><option value="call" disabled={!entry}>Draw call movement</option></select></label><label>Position<select aria-label="Selected field position" value={selectedRole} onChange={(e) => setSelectedRole(e.target.value)}><option value="">Select position</option>{formation?.spots.map((s) => <option key={s.role}>{s.role}</option>)}</select></label>{['route', 'call'].includes(editMode) && <><button type="button" disabled={!selectedRole} onClick={() => trimRoute(false)}>Undo point</button><button type="button" disabled={!selectedRole} onClick={() => trimRoute(true)}>Clear route</button></>}</div>
+          <div className="ff-tools"><label>Field tool<select aria-label="Field tool" value={editMode} onChange={(e) => { setEditMode(e.target.value) }}><option value="view">Select & substitute</option><option value="position">Move starting positions</option><option value="route" disabled={!play}>Draw base route</option><option value="call" disabled={!entry}>Draw call movement</option></select></label><label>Position<select aria-label="Selected field position" value={selectedRole} onChange={(e) => setSelectedRole(e.target.value)}><option value="">Select position</option>{formation?.spots.map((s) => <option key={s.role}>{s.role}</option>)}</select></label>{['route', 'call'].includes(editMode) && <><button type="button" disabled={!selectedRole} onClick={() => trimRoute(false)}>Undo point</button><button type="button" disabled={!selectedRole} onClick={() => trimRoute(true)}>Clear route</button></>}</div>
           <p className="ff-hint">{editMode === 'view' ? 'Tap a position, then choose a player. Substitutes inherit that position’s route.' : editMode === 'position' ? `Tap a position, then its new location. Changes apply to ${play ? 'this play' : 'this formation'}.` : 'Tap a position, then tap each bend and endpoint on the field. Solid lines are base routes; dashed lines are call movements.'}</p>
         </div>
         <aside className="ff-panel ff-lineup"><h3>On field <span>{active.size}/5</span></h3>{!formation && <p>Create a defensive formation above to place five positions.</p>}{unfilled.length > 0 && <p className="ff-warning">Unfilled: {unfilled.map((s) => s.role).join(', ')}</p>}{formation?.spots.map((spot, i) => <label key={spot.role} className={`ff-position-row ${selectedRole === spot.role ? 'is-selected' : ''}`} style={{ '--role-color': ROUTE_COLORS[i] }}><strong>{spot.role}</strong><select aria-label={`Assign ${spot.role}`} value={team.players.some((p) => p.id === assignments[spot.role] && p.available) ? assignments[spot.role] : ''} onFocus={() => setSelectedRole(spot.role)} onChange={(e) => updateTeam((t) => assignPlayer(t, formation.id, spot.role, e.target.value))}><option value="">Unfilled</option>{team.players.filter((p) => p.available).map((p) => <option key={p.id} value={p.id}>{p.name}{p.number ? ` #${p.number}` : ''}{active.has(p.id) ? ' · on field' : ''}</option>)}</select></label>)}
@@ -238,7 +250,7 @@ export default function FlagFootballBoard({ rosters }) {
         </aside>
       </div>
       {play && <section className="ff-panel"><h3>{play.name} · Reference & notes</h3><div className="ff-row"><button type="button" disabled={uploading} onClick={() => uploadInput.current?.click()}>{uploading ? 'Saving upload…' : play.attachment ? 'Replace reference' : 'Upload play image or PDF'}</button><input hidden ref={uploadInput} type="file" accept="image/png,image/jpeg,image/webp,application/pdf" onChange={uploadReference} /><p className="ff-hint">Up to 15 MB. Upload the original, then draw the routes by position.</p></div><label>Play notes<textarea rows={2} maxLength={2000} value={play.notes} onChange={(e) => updatePlay({ notes: e.target.value })} placeholder="Reads, timing, coaching cues…" /></label><Attachment attachment={play.attachment} /></section>}
-      <details className="ff-panel"><summary>Playing time for {team.name}</summary><div className="ff-time-list">{team.players.map((p) => <div key={p.id}><strong>{p.name}</strong><span>{!p.available ? 'Absent' : active.has(p.id) ? 'On field' : 'Bench'}</span><span>In {duration(p.fieldSeconds)}</span><span>Sit {duration(p.benchSeconds)}</span></div>)}</div><button type="button" onClick={() => { if (window.confirm(`Reset game and player timers for ${team.name}?`)) { setRunning(false); updateTeam((t) => ({ ...t, clock: 0, players: t.players.map((p) => ({ ...p, fieldSeconds: 0, benchSeconds: 0 })) })) } }}>Reset this team’s timers</button></details>
+      <details className="ff-panel"><summary>Playing time for {team.name}</summary><div className="ff-time-list">{team.players.map((p) => <div key={p.id}><strong>{p.name}</strong><span>{!p.available ? 'Absent' : active.has(p.id) ? 'On field' : 'Bench'}</span><span>In {duration(p.fieldSeconds)}</span><span>Sit {duration(p.benchSeconds)}</span></div>)}</div><button type="button" onClick={() => { if (window.confirm(`Reset game and player timers for ${team.name}?`)) { updateTeam((t) => ({ ...t, clock: 0, timerRunning: false, timerUpdatedAt: null, players: t.players.map((p) => ({ ...p, fieldSeconds: 0, benchSeconds: 0 })) })) } }}>Reset this team’s timers</button></details>
     </>}
 
     {tab === 'playbook' && <section><div className="ff-section-title"><div><h3>{team.name} playbook</h3><p>Up to 20 plays. Routes follow positions when players change.</p></div><button type="button" disabled={!formation || team.plays.length >= 20} onClick={addPlay}>+ Create play</button></div>{team.plays.length === 0 && <p className="ff-empty">Create your first play from the current formation, then upload a reference or draw its routes.</p>}<div className="ff-play-grid">{team.plays.slice().sort((a, b) => a.number - b.number).map((p) => <article key={p.id} className="ff-play-card"><button type="button" className="ff-preview" onClick={() => showPlay(p.id)}><Field compact formation={team.formations.find((f) => f.id === p.formationId)} play={p} assignments={{}} players={[]} /><strong>{p.name}</strong><span>{team.formations.find((f) => f.id === p.formationId)?.name}</span><small>{Object.values(p.routes).some((r) => r.length) ? 'Routes ready' : 'Routes not drawn'}{p.attachment ? ' · Reference uploaded' : ''}</small></button><div className="ff-row"><button type="button" onClick={() => { if (!drive) { changeTab('drives'); setNotice('Create a drive card, then add plays to it.'); return } const next = makeDriveEntry(p); updateTeam((t) => ({ ...t, drives: t.drives.map((d) => d.id === drive.id ? { ...d, entries: [...d.entries, next] } : d) })); setNotice(`${p.name} added to ${drive.name}.`) }}>Add to {drive?.name || 'drive card'}</button><button type="button" className="ff-delete" onClick={() => {
@@ -253,7 +265,7 @@ export default function FlagFootballBoard({ rosters }) {
         return <li key={item.id} className="ff-panel"><div className="ff-section-title"><h4>{index + 1}. {callLabel(base, item)}</h4><div className="ff-row"><button type="button" aria-label={`Move entry ${index + 1} up`} disabled={index === 0} onClick={() => move(-1)}>↑</button><button type="button" aria-label={`Move entry ${index + 1} down`} disabled={index === drive.entries.length - 1} onClick={() => move(1)}>↓</button><button type="button" onClick={() => showPlay(item.playId, item.id)}>Show on field</button></div></div><div className="ff-call-inputs"><label>Action code<input value={item.action} maxLength={40} placeholder="Fire" onChange={(e) => setItem({ action: e.target.value, actionMeaning: e.target.value.toLowerCase() === 'fire' ? 'Fake handoff' : item.actionMeaning })} /></label><label>Action meaning<input value={item.actionMeaning} maxLength={120} placeholder="Fake handoff" onChange={(e) => setItem({ actionMeaning: e.target.value })} /></label><label>Motion code<input value={item.motion} maxLength={40} placeholder="Mustard" onChange={(e) => setItem({ motion: e.target.value })} /></label><label>Motion position<select value={item.target} onChange={(e) => setItem({ target: e.target.value })}>{base?.spots.map((s) => <option key={s.role}>{s.role}</option>)}</select></label></div><div className="ff-row"><label>Sideline note<input value={item.note || ''} maxLength={200} placeholder="e.g. Check the corner before the snap" onChange={(e) => setItem({ note: e.target.value })} /></label><button type="button" className="ff-delete" onClick={() => updateTeam((t) => ({ ...t, selectedEntryId: t.selectedEntryId === item.id ? '' : t.selectedEntryId, drives: t.drives.map((d) => d.id === drive.id ? { ...d, entries: d.entries.filter((e) => e.id !== item.id) } : d) }))}>Remove entry</button></div></li>
       })}</ol><button type="button" className="ff-delete" onClick={() => { if (window.confirm(`Delete drive card ${drive.name}? The plays will stay in your playbook.`)) updateTeam((t) => ({ ...t, drives: t.drives.filter((d) => d.id !== drive.id), selectedDriveId: '', selectedEntryId: '' })) }}>Delete drive card</button></>}</section>}
 
-    {tab === 'team' && <section><div className="ff-row"><label>Team name<input value={team.name} maxLength={60} onChange={(e) => updateTeam({ name: e.target.value })} /></label><label>New team<input value={teamName} maxLength={60} placeholder="e.g. Lynx Gold" onChange={(e) => setTeamName(e.target.value)} /></label><button type="button" disabled={!teamName.trim()} onClick={() => { const next = makeTeam(teamName.trim()); setRunning(false); setBoard((b) => ({ ...b, teams: [...b.teams, next], selectedTeamId: next.id })); setTeamName(''); resetInteraction() }}>Add team</button></div><div className="ff-panel"><h3>{team.name} roster</h3><div className="ff-row"><label>Player name<input value={playerName} maxLength={60} onChange={(e) => setPlayerName(e.target.value)} placeholder="Player name" /></label><label>Jersey #<input value={playerNumber} maxLength={4} onChange={(e) => setPlayerNumber(e.target.value)} /></label><button type="button" disabled={!playerName.trim()} onClick={() => { updateTeam((t) => ({ ...t, players: [...t.players, makePlayer(playerName.trim(), playerNumber.trim())] })); setPlayerName(''); setPlayerNumber('') }}>Add player</button></div>{rosterKeys.length > 0 && <div className="ff-row"><label>Existing flag football roster<select value={rosterKey} onChange={(e) => setRosterKey(e.target.value)}><option value="">Choose roster</option>{rosterKeys.map((key) => <option key={key} value={key}>{key.slice('flagFootball:'.length).replace(':', ' · ')}</option>)}</select></label><button type="button" disabled={!rosterKey} onClick={importRoster}>Add roster players</button></div>}<p className="ff-hint">Mark players available for today. Position tags help you choose subs; you can assign any available player.</p>{team.players.map((p) => {
+    {tab === 'team' && <section><div className="ff-row"><label>Team name<input value={team.name} maxLength={60} onChange={(e) => updateTeam({ name: e.target.value })} /></label><label>New team<input value={teamName} maxLength={60} placeholder="e.g. Lynx Gold" onChange={(e) => setTeamName(e.target.value)} /></label><button type="button" disabled={!teamName.trim()} onClick={() => { const next = makeTeam(teamName.trim()); setBoard((b) => ({ ...b, teams: [...b.teams, next], selectedTeamId: next.id })); setTeamName(''); resetInteraction() }}>Add team</button></div><div className="ff-panel"><h3>{team.name} roster</h3><div className="ff-row"><label>Player name<input value={playerName} maxLength={60} onChange={(e) => setPlayerName(e.target.value)} placeholder="Player name" /></label><label>Jersey #<input value={playerNumber} maxLength={4} onChange={(e) => setPlayerNumber(e.target.value)} /></label><button type="button" disabled={!playerName.trim()} onClick={() => { updateTeam((t) => ({ ...t, players: [...t.players, makePlayer(playerName.trim(), playerNumber.trim())] })); setPlayerName(''); setPlayerNumber('') }}>Add player</button></div>{rosterKeys.length > 0 && <div className="ff-row"><label>Existing flag football roster<select value={rosterKey} onChange={(e) => setRosterKey(e.target.value)}><option value="">Choose roster</option>{rosterKeys.map((key) => <option key={key} value={key}>{key.slice('flagFootball:'.length).replace(':', ' · ')}</option>)}</select></label><button type="button" disabled={!rosterKey} onClick={importRoster}>Add roster players</button></div>}<p className="ff-hint">Mark players available for today. Position tags help you choose subs; you can assign any available player.</p>{team.players.map((p) => {
       const updatePlayer = (change) => updateTeam((t) => ({ ...t, players: t.players.map((player) => player.id === p.id ? { ...player, ...change } : player) }))
       return <article className="ff-player-editor" key={p.id}><div className="ff-row"><label>Name<input aria-label={`Name for ${p.name}`} value={p.name} maxLength={60} onChange={(e) => updatePlayer({ name: e.target.value })} /></label><label>Jersey #<input aria-label={`Jersey for ${p.name}`} value={p.number} maxLength={4} onChange={(e) => updatePlayer({ number: e.target.value })} /></label><label className="ff-check"><input type="checkbox" checked={p.available} onChange={(e) => {
         const available = e.target.checked
