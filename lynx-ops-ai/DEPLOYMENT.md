@@ -92,3 +92,7 @@ Redeploy the Render backend after changing `CLIENT_ORIGIN`.
 - Have final waiver language reviewed before relying on it.
 - Render disk storage is okay for a small MVP test, but Supabase/Postgres is the better long-term database.
 - Do not share admin credentials. Create individual coach/admin profiles instead.
+
+## Optional permanent coach login
+
+On the backend service, set `COACH_USERNAME` and `COACH_PASSWORD` in Render's Environment settings. Both must be set; leaving either empty disables this login. Keep the password out of source control. Deploy the backend and frontend updates, then use Coach Login with the configured username and password. This account has coach access only and does not require a stored invitation. Changing these settings does not fix persistent storage for registered accounts.

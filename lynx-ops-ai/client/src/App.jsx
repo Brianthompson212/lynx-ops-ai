@@ -2205,15 +2205,15 @@ function App() {
         <section className="portal-hero">
           <p className="eyebrow">{userLoginRole === 'coach' ? 'Coach login' : 'Parent login'}</p>
           <h1>Log in to your Lynx profile.</h1>
-          <p className="hero-copy">Access opens after your invite profile is complete and your waiver acknowledgement is saved.</p>
+          <p className="hero-copy">Use your registered email or the coach username provided by your administrator.</p>
         </section>
 
         <section className="registration-panel admin-login-panel">
           <form className="parent-message-form" onSubmit={handleUserLogin}>
             <div className="form-grid">
               <label htmlFor="user-login-email">
-                <span>Email</span>
-                <input id="user-login-email" type="email" value={userLoginForm.email} onChange={(event) => handleUserLoginChange('email', event.target.value)} />
+                <span>Email or coach username</span>
+                <input id="user-login-email" type="text" autoComplete="username" autoCapitalize="none" value={userLoginForm.email} onChange={(event) => handleUserLoginChange('email', event.target.value)} />
               </label>
               <label htmlFor="user-login-password">
                 <span>Password</span>
@@ -2225,7 +2225,7 @@ function App() {
               <ShieldCheck size={20} aria-hidden="true" />
               <span>Log In</span>
             </button>
-            <p className="privacy-note">Need access? Ask an admin for an invite link.</p>
+            <p className="privacy-note">Need access? Ask your administrator for an invitation or coach login.</p>
           </form>
         </section>
       </main>

@@ -5,6 +5,7 @@ import { createHmac, pbkdf2Sync, randomBytes, randomUUID, timingSafeEqual } from
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import OpenAI from 'openai'
+import { configuredCoachLogin } from './coachAccess.js'
 
 const app = express()
 const port = process.env.PORT ?? 3001
@@ -335,11 +336,16 @@ app.post('/api/auth/admin-login', (request, response) => {
 app.post('/api/auth/login', async (request, response) => {
   const { email = '', password = '' } = request.body ?? {}
   const normalizedEmail = String(email).trim().toLowerCase()
+  const coach = configuredCoachLogin(email, password)
+  if (coach) {
+    const token = signToken({ email: coach.email, role: 'coach', profileId: coach.id, expiresAt: Date.now() + 1000 * 60 * 60 * 12 })
+    return response.json({ token, profile: sanitizeProfile(coach) })
+  }
   const directory = await readDirectory()
   const profile = directory.profiles.find((candidate) => candidate.email?.toLowerCase() === normalizedEmail)
 
   if (!profile || !verifyPassword(password, profile.passwordHash)) {
-    return response.status(401).json({ error: 'Invalid email or password.' })
+    return response.status(401).json({ error: 'Invalid email, username, or password.' })
   }
 
   const token = signToken({
