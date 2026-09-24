@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { FLAG_STORAGE_KEY, OFFENSE_ROLES, DEFENSE_ROLES, ROUTE_COLORS, makeBoard, makeTeam, makePlayer, makeFormation, makePlay, makeDriveEntry, activePlayerIds, assignPlayer, settleTeamClock, setTeamClockRunning, selectPlay, callLabel, duration, putUpload, getUpload } from './flagFootball'
 import './flagFootball.css'
 import FlagScoreboard from './FlagScoreboard'
+import FlagDialog from './FlagDialog'
 import { makeGame } from './flagGame'
 
 function readBoard() {
@@ -43,7 +44,7 @@ function Attachment({ attachment }) {
 function Field({ formation, assignments, players, play, entry, selectedRole, setSelectedRole, editMode, onPoint, compact = false }) {
   const spots = play?.spots || formation?.spots || []
   const routes = play?.routes || {}
-  return <svg className={`ff-field ${compact ? 'ff-field-mini' : ''}`} viewBox="0 0 600 560" role="img" aria-label={compact ? `${play?.name} diagram` : '5v5 football field with positions and routes'} onClick={compact ? undefined : (event) => {
+  return <svg className={`ff-field ${compact ? 'ff-field-mini' : ''}`} viewBox="0 0 600 560" role={compact ? 'img' : 'group'} aria-label={compact ? `${play?.name} diagram` : '5v5 football field with positions and routes'} onClick={compact ? undefined : (event) => {
     const bounds = event.currentTarget.getBoundingClientRect()
     onPoint({ x: Math.max(7, Math.min(93, (event.clientX - bounds.left) / bounds.width * 100)), y: Math.max(9, Math.min(92, (event.clientY - bounds.top) / bounds.height * 100)) })
   }}>
@@ -85,6 +86,7 @@ export default function FlagFootballBoard({ rosters }) {
   const [notice, setNotice] = useState('')
   const [tab, setTab] = useState('field')
   const [selectedRole, setSelectedRole] = useState('')
+  const [subRole, setSubRole] = useState('')
   const [editMode, setEditMode] = useState('view')
   const [teamName, setTeamName] = useState('')
   const [playerName, setPlayerName] = useState('')
@@ -133,7 +135,7 @@ export default function FlagFootballBoard({ rosters }) {
   }
   const updatePlay = (change) => updateTeam((t) => ({ ...t, plays: t.plays.map((p) => p.id === play?.id ? { ...p, ...change } : p) }))
   const updateEntry = (change) => updateTeam((t) => ({ ...t, drives: t.drives.map((d) => d.id === drive?.id ? { ...d, entries: d.entries.map((e) => e.id === entry?.id ? { ...e, ...change } : e) } : d) }))
-  const resetInteraction = () => { setSelectedRole(''); setEditMode('view'); setNotice('') }
+  const resetInteraction = () => { setSelectedRole(''); setSubRole(''); setEditMode('view'); setNotice('') }
   const showPlay = (id, entryId = '') => { updateTeam((t) => selectPlay(t, id, entryId)); resetInteraction(); setTab('field') }
   const changeSide = (side) => { updateTeam({ side, selectedPlayId: '', selectedEntryId: '' }); resetInteraction(); setFormationRoles([]) }
   const changeFormation = (id) => { updateTeam({ formationIds: { ...team.formationIds, [team.side]: id }, selectedPlayId: '', selectedEntryId: '' }); resetInteraction() }
@@ -214,17 +216,17 @@ export default function FlagFootballBoard({ rosters }) {
   const selectedPlayer = team.players.find((p) => p.id === assignments[selectedRole])
   return <section className="ff-board" aria-label="Flag football 5v5 coaching board">
     <header className="ff-header">
-      <div><p className="eyebrow">LYNX SIDELINE</p><h2>Flag Football <span className="ff-badge">5v5</span></h2><p>Positions, plays, and your next drive.</p></div>
+      <div><p className="eyebrow">LYNX SIDELINE</p><h2>Flag Football <span className="ff-badge">5v5</span></h2><p>Your sideline. Ready for the next play.</p></div>
       <label>Active team<select aria-label="Active flag football team" value={team.id} onChange={(e) => { setBoard((b) => ({ ...b, selectedTeamId: e.target.value })); resetInteraction(); setPlayerName(''); setPlayerNumber(''); setRosterKey(''); setFormationName(''); setFormationRoles([]); setDriveName('') }}>{board.teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
     </header>
     <div className="ff-toolbar"><div className="ff-clock"><span>{team.name} · {team.timerRunning ? 'Running' : 'Stopped'}</span><strong>{duration(team.clock)}</strong><button type="button" onClick={() => updateTeam((t) => setTeamClockRunning(t, !t.timerRunning))}>{team.timerRunning ? 'Stop timer' : 'Start timer'}</button></div>
       {board.teams.filter((t) => t.id !== team.id && t.timerRunning).map((t) => <span key={t.id}>{t.name} timer running · {duration(t.clock)} <button type="button" onClick={() => updateTeam((current) => setTeamClockRunning(current, false), t.id)}>Stop {t.name} timer</button></span>)}
     </div>
     <FlagScoreboard key={team.id} team={team} updateTeam={updateTeam} />
-    <p className="ff-storage">Saved on this browser and device. Started timers keep running across views, team switches, and reloads until you stop them or finish/reset the game.</p>
+    <p className="ff-storage">Saved on this device. The clock keeps running until you stop it or end the game.</p>
     {saveError && <p role="alert" className="ff-error">{saveError}</p>}
     {notice && <p role="status" className="ff-notice">{notice}</p>}
-    <nav className="ff-tabs" aria-label="Flag football views">{[['field', 'Game board'], ['playbook', `Playbook · ${team.plays.length}/20`], ['drives', 'Drive cards'], ['team', 'Teams & players']].map(([key, label]) => <button type="button" key={key} aria-pressed={tab === key} onClick={() => changeTab(key)}>{label}</button>)}</nav>
+    <nav className="ff-tabs" aria-label="Flag football views">{[['field', 'Sideline'], ['playbook', `Playbook · ${team.plays.length}/20`], ['drives', 'Drive cards'], ['team', 'Roster']].map(([key, label]) => <button type="button" key={key} aria-pressed={tab === key} onClick={() => changeTab(key)}>{label}</button>)}</nav>
 
     {tab === 'field' && <>
       <div className="ff-toolbar">
@@ -240,17 +242,17 @@ export default function FlagFootballBoard({ rosters }) {
       <div className="ff-call"><span>{entry ? drive.name : formation?.name || 'Set up your defense'}</span><h3>{play ? callLabel(play, entry) : 'Formation board'}</h3>{entry?.note && <p>{entry.note}</p>}{entry?.action && <small>{entry.actionMeaning || 'Action call'}</small>}{entry?.motion && <small>Motion check: {entry.motion} → {entry.target}</small>}{entry && (entry.action || entry.motion) && !Object.values(entry.routes || {}).some((r) => r.length) && <p>Call movements have not been drawn yet. Use “Draw call movement” to define them.</p>}</div>
       <div className="ff-game-grid">
         <div>
-          <Field formation={formation} assignments={assignments} players={team.players} play={play} entry={entry} selectedRole={selectedRole} setSelectedRole={setSelectedRole} editMode={editMode} onPoint={onPoint} />
-          <div className="ff-tools"><label>Field tool<select aria-label="Field tool" value={editMode} onChange={(e) => { setEditMode(e.target.value) }}><option value="view">Select & substitute</option><option value="position">Move starting positions</option><option value="route" disabled={!play}>Draw base route</option><option value="call" disabled={!entry}>Draw call movement</option></select></label><label>Position<select aria-label="Selected field position" value={selectedRole} onChange={(e) => setSelectedRole(e.target.value)}><option value="">Select position</option>{formation?.spots.map((s) => <option key={s.role}>{s.role}</option>)}</select></label>{['route', 'call'].includes(editMode) && <><button type="button" disabled={!selectedRole} onClick={() => trimRoute(false)}>Undo point</button><button type="button" disabled={!selectedRole} onClick={() => trimRoute(true)}>Clear route</button></>}</div>
-          <p className="ff-hint">{editMode === 'view' ? 'Tap a position, then choose a player. Substitutes inherit that position’s route.' : editMode === 'position' ? `Tap a position, then its new location. Changes apply to ${play ? 'this play' : 'this formation'}.` : 'Tap a position, then tap each bend and endpoint on the field. Solid lines are base routes; dashed lines are call movements.'}</p>
+          <Field formation={formation} assignments={assignments} players={team.players} play={play} entry={entry} selectedRole={selectedRole} setSelectedRole={(role) => { setSelectedRole(role); if (editMode === 'view') setSubRole(role) }} editMode={editMode} onPoint={onPoint} />
+          <details className="ff-edit-tools"><summary>Edit field & routes</summary><div className="ff-tools"><label>Editing mode<select aria-label="Field tool" value={editMode} onChange={(e) => { setEditMode(e.target.value) }}><option value="view">Select & substitute</option><option value="position">Move starting positions</option><option value="route" disabled={!play}>Draw base route</option><option value="call" disabled={!entry}>Draw call movement</option></select></label><label>Position<select aria-label="Selected field position" value={selectedRole} onChange={(e) => setSelectedRole(e.target.value)}><option value="">Select position</option>{formation?.spots.map((s) => <option key={s.role}>{s.role}</option>)}</select></label>{['route', 'call'].includes(editMode) && <><button type="button" disabled={!selectedRole} onClick={() => trimRoute(false)}>Undo point</button><button type="button" disabled={!selectedRole} onClick={() => trimRoute(true)}>Clear route</button></>}</div></details>
+          <p className="ff-hint">{editMode === 'view' ? 'Tap a position on the field to make a substitution.' : editMode === 'position' ? `Tap a position, then its new location. Changes apply to ${play ? 'this play' : 'this formation'}.` : 'Tap a position, then tap each bend and endpoint on the field. Solid lines are base routes; dashed lines are call movements.'}</p>
         </div>
         <aside className="ff-panel ff-lineup"><h3>On field <span>{active.size}/5</span></h3>{!formation && <p>Create a defensive formation above to place five positions.</p>}{unfilled.length > 0 && <p className="ff-warning">Unfilled: {unfilled.map((s) => s.role).join(', ')}</p>}{formation?.spots.map((spot, i) => <label key={spot.role} className={`ff-position-row ${selectedRole === spot.role ? 'is-selected' : ''}`} style={{ '--role-color': ROUTE_COLORS[i] }}><strong>{spot.role}</strong><select aria-label={`Assign ${spot.role}`} value={team.players.some((p) => p.id === assignments[spot.role] && p.available) ? assignments[spot.role] : ''} onFocus={() => setSelectedRole(spot.role)} onChange={(e) => updateTeam((t) => assignPlayer(t, formation.id, spot.role, e.target.value))}><option value="">Unfilled</option>{team.players.filter((p) => p.available).map((p) => <option key={p.id} value={p.id}>{p.name}{p.number ? ` #${p.number}` : ''}{active.has(p.id) ? ' · on field' : ''}</option>)}</select></label>)}
           <h3>Bench <span>{team.players.filter((p) => p.available && !active.has(p.id)).length}</span></h3><p className="ff-hint">{selectedRole ? `Choose a replacement for ${selectedRole}${selectedPlayer ? ` (${selectedPlayer.name})` : ''}.` : 'Select a field position to make a substitution.'}</p>
           <div className="ff-bench">{team.players.filter((p) => p.available && !active.has(p.id)).sort((a, b) => b.benchSeconds - a.benchSeconds).map((p) => <button type="button" key={p.id} disabled={!selectedRole || !formation} onClick={() => updateTeam((t) => assignPlayer(t, formation.id, selectedRole, p.id))}><strong>{p.number ? `#${p.number} ` : ''}{p.name}</strong><small>{p.roles.length ? p.roles.join(' · ') : 'Any position'}</small><small>In {duration(p.fieldSeconds)} · Sit {duration(p.benchSeconds)}</small></button>)}</div>{team.players.length === 0 && <button type="button" onClick={() => changeTab('team')}>Add your players</button>}
         </aside>
       </div>
-      {play && <section className="ff-panel"><h3>{play.name} · Reference & notes</h3><div className="ff-row"><button type="button" disabled={uploading} onClick={() => uploadInput.current?.click()}>{uploading ? 'Saving upload…' : play.attachment ? 'Replace reference' : 'Upload play image or PDF'}</button><input hidden ref={uploadInput} type="file" accept="image/png,image/jpeg,image/webp,application/pdf" onChange={uploadReference} /><p className="ff-hint">Up to 15 MB. Upload the original, then draw the routes by position.</p></div><label>Play notes<textarea rows={2} maxLength={2000} value={play.notes} onChange={(e) => updatePlay({ notes: e.target.value })} placeholder="Reads, timing, coaching cues…" /></label><Attachment attachment={play.attachment} /></section>}
-      <details className="ff-panel"><summary>Playing time for {team.name}</summary><div className="ff-time-list">{team.players.map((p) => <div key={p.id}><strong>{p.name}</strong><span>{!p.available ? 'Absent' : active.has(p.id) ? 'On field' : 'Bench'}</span><span>In {duration(p.fieldSeconds)}</span><span>Sit {duration(p.benchSeconds)}</span></div>)}</div><button type="button" onClick={() => { if (window.confirm(`Reset game and player timers for ${team.name}?`)) { updateTeam((t) => ({ ...t, clock: 0, timerRunning: false, timerUpdatedAt: null, players: t.players.map((p) => ({ ...p, fieldSeconds: 0, benchSeconds: 0 })) })) } }}>Reset this team’s timers</button></details>
+      {play && <details className="ff-panel"><summary>{play.name} · Play notes & reference</summary><div className="ff-row"><button type="button" disabled={uploading} onClick={() => uploadInput.current?.click()}>{uploading ? 'Saving upload…' : play.attachment ? 'Replace reference' : 'Upload play image or PDF'}</button><input hidden ref={uploadInput} type="file" accept="image/png,image/jpeg,image/webp,application/pdf" onChange={uploadReference} /><p className="ff-hint">Up to 15 MB. Upload the original, then draw the routes by position.</p></div><label>Play notes<textarea rows={2} maxLength={2000} value={play.notes} onChange={(e) => updatePlay({ notes: e.target.value })} placeholder="Reads, timing, coaching cues…" /></label><Attachment attachment={play.attachment} /></details>}
+      <details className="ff-panel"><summary>Playing time for {team.name}</summary><div className="ff-time-list">{team.players.map((p) => <div key={p.id}><strong>{p.name}</strong><span>{!p.available ? 'Absent' : active.has(p.id) ? 'On field' : 'Bench'}</span><span>In {duration(p.fieldSeconds)}</span><span>Sit {duration(p.benchSeconds)}</span></div>)}</div></details>
     </>}
 
     {tab === 'playbook' && <section><div className="ff-section-title"><div><h3>{team.name} playbook</h3><p>Up to 20 plays. Routes follow positions when players change.</p></div><button type="button" disabled={!formation || team.plays.length >= 20} onClick={addPlay}>+ Create play</button></div>{team.plays.length === 0 && <p className="ff-empty">Create your first play from the current formation, then upload a reference or draw its routes.</p>}<div className="ff-play-grid">{team.plays.slice().sort((a, b) => a.number - b.number).map((p) => <article key={p.id} className="ff-play-card"><button type="button" className="ff-preview" onClick={() => showPlay(p.id)}><Field compact formation={team.formations.find((f) => f.id === p.formationId)} play={p} assignments={{}} players={[]} /><strong>{p.name}</strong><span>{team.formations.find((f) => f.id === p.formationId)?.name}</span><small>{Object.values(p.routes).some((r) => r.length) ? 'Routes ready' : 'Routes not drawn'}{p.attachment ? ' · Reference uploaded' : ''}</small></button><div className="ff-row"><button type="button" onClick={() => { if (!drive) { changeTab('drives'); setNotice('Create a drive card, then add plays to it.'); return } const next = makeDriveEntry(p); updateTeam((t) => ({ ...t, drives: t.drives.map((d) => d.id === drive.id ? { ...d, entries: [...d.entries, next] } : d) })); setNotice(`${p.name} added to ${drive.name}.`) }}>Add to {drive?.name || 'drive card'}</button><button type="button" className="ff-delete" onClick={() => {
@@ -272,5 +274,13 @@ export default function FlagFootballBoard({ rosters }) {
         updateTeam((t) => ({ ...t, players: t.players.map((player) => player.id === p.id ? { ...player, available } : player), assignments: available ? t.assignments : Object.fromEntries(Object.entries(t.assignments).map(([id, lineup]) => [id, Object.fromEntries(Object.entries(lineup).filter(([, playerId]) => playerId !== p.id))])) }))
       }} />Available</label><button type="button" className="ff-delete" onClick={() => { if (window.confirm(`Remove ${p.name} from ${team.name}?`)) updateTeam((t) => ({ ...t, players: t.players.filter((player) => player.id !== p.id), assignments: Object.fromEntries(Object.entries(t.assignments).map(([id, lineup]) => [id, Object.fromEntries(Object.entries(lineup).filter(([, playerId]) => playerId !== p.id))])) })) }}>Remove</button></div><fieldset><legend>Can play</legend><div className="ff-checks">{[...OFFENSE_ROLES, ...DEFENSE_ROLES].map((role) => <label key={role}><input type="checkbox" checked={p.roles.includes(role)} onChange={(e) => updatePlayer({ roles: e.target.checked ? [...p.roles, role] : p.roles.filter((r) => r !== role) })} />{role}</label>)}</div></fieldset></article>
     })}</div></section>}
+    {subRole && formation && <FlagDialog title={'Substitute · ' + subRole} onClose={() => setSubRole('')}>
+      <p>{team.players.find((p) => p.id === assignments[subRole])?.name || 'Open position'} · Choose who goes in.</p>
+      <div className="ff-player-picks">{team.players.filter((p) => p.available).sort((a, b) => Number(active.has(a.id)) - Number(active.has(b.id)) || b.benchSeconds - a.benchSeconds).map((p) => <button type="button" key={p.id} aria-pressed={assignments[subRole] === p.id} onClick={() => {
+        updateTeam((t) => assignPlayer(t, formation.id, subRole, p.id)); setNotice(p.name + ' is in at ' + subRole + '.'); setSubRole('')
+      }}><strong>{p.number ? '#' + p.number + ' ' : ''}{p.name}</strong><small>{active.has(p.id) ? 'On field · moves to this spot' : 'Bench · ' + duration(p.benchSeconds) + ' total rest'}</small></button>)}</div>
+      {!team.players.some((p) => p.available) && <p>Add available players in Roster to set your lineup.</p>}
+      <button type="button" onClick={() => setSubRole('')}>Cancel</button>
+    </FlagDialog>}
   </section>
 }

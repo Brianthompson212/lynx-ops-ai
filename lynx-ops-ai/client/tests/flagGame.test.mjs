@@ -126,3 +126,22 @@ test('team clocks are independent and finishing a game stops its timer', () => {
   assert.equal(finished.timerRunning, false)
   assert.equal(settleTeamClock(finished, 30000).clock, 0)
 })
+
+test('next game resets live selections, optionally clears lineup, and preserves saved preparation', () => {
+  let team = makeTeam('Gold')
+  team.players = [makePlayer('Avery')]
+  team = assignPlayer(team, team.formationIds.offense, 'Q', team.players[0].id)
+  team.selectedPlayId = 'play'
+  team.selectedDriveId = 'drive'
+  team.selectedEntryId = 'entry'
+  const next = archiveGame(team, { opponent: ' Tigers ', keepLineup: false })
+  assert.equal(next.game.opponent, 'Tigers')
+  assert.deepEqual(next.assignments, {})
+  assert.equal(next.selectedPlayId, '')
+  assert.equal(next.selectedDriveId, '')
+  assert.equal(next.selectedEntryId, '')
+  assert.equal(next.players[0].name, 'Avery')
+  assert.equal(next.formations, team.formations)
+  assert.equal(next.drives, team.drives)
+  assert.deepEqual(archiveGame(team).assignments, team.assignments)
+})

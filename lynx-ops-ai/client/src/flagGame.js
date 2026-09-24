@@ -69,9 +69,11 @@ export function gameStats(game, players) {
   return { rows: [...rows.values()], totals }
 }
 
-export function archiveGame(team) {
+export function archiveGame(team, { opponent = '', keepLineup = true } = {}) {
   const current = team.game || makeGame()
   const saved = { ...current, endedAt: new Date().toISOString(), clock: team.clock, players: team.players.map((p) => ({ ...p })) }
-  return { ...team, game: makeGame(), gameHistory: [...(team.gameHistory || []), saved], clock: 0, timerRunning: false, timerUpdatedAt: null,
+  return { ...team, game: { ...makeGame(), opponent: opponent.trim() || 'Opponent' }, gameHistory: [...(team.gameHistory || []), saved], clock: 0, timerRunning: false, timerUpdatedAt: null,
+    selectedPlayId: '', selectedDriveId: '', selectedEntryId: '', side: 'offense',
+    assignments: keepLineup ? team.assignments : {},
     players: team.players.map((p) => ({ ...p, fieldSeconds: 0, benchSeconds: 0 })) }
 }

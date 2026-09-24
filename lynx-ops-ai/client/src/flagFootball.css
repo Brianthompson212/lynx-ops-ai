@@ -122,3 +122,43 @@ details.ff-panel { display: block; }
   .ff-score-heading label { width: 100%; }
   .ff-game-log li { align-items: stretch; flex-direction: column; }
 }
+
+/* Sideline actions: large tap targets and short, focused popups. */
+.ff-board button { min-height: 46px; touch-action: manipulation; }
+.ff-board .ff-primary { background: #59328c; border-color: #59328c; color: #fff; }
+.ff-board .ff-primary:hover:not(:disabled) { background: #44246d; color: #fff; }
+.ff-score-display { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 18px; }
+.ff-score-display > div { gap: 10px; }
+.ff-score-display > div + div { border-left: 1px solid #715987; padding-left: 16px; }
+.ff-score-display button { background: #ffe08a; color: #302343; border: 0; width: 100%; }
+.ff-quick-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.ff-quick-actions button { flex: 1 1 130px; }
+.ff-dialog { width: min(560px, calc(100% - 24px)); max-height: calc(100dvh - 32px); padding: 22px; border: 0; border-radius: 20px; color: #302343; background: #fffcf7; box-shadow: 0 24px 90px #160b3266; overflow-y: auto; overscroll-behavior: contain; }
+.ff-dialog[open] { display: grid; gap: 18px; }
+.ff-dialog::backdrop { background: #130b24b3; backdrop-filter: blur(3px); }
+.ff-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ff-dialog-heading h3 { font-size: 1.3rem; }
+.ff-dialog-heading button { flex-shrink: 0; }
+.ff-dialog p { line-height: 1.5; }
+.ff-choice-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.ff-choice-grid button { display: grid; gap: 4px; min-height: 80px; padding: 10px 5px; }
+.ff-choice-grid strong { font-size: 1.65rem; }
+.ff-choice-grid span { font-size: .8rem; }
+.ff-player-picks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ff-player-picks button { display: grid; gap: 4px; min-height: 58px; text-align: left; overflow-wrap: anywhere; }
+.ff-player-picks small { font-size: .72rem; font-weight: 400; }
+.ff-board .ff-choice-grid button[aria-pressed=true], .ff-board .ff-player-picks button[aria-pressed=true] { border: 2px solid #59328c; background: #eee4fa; color: #302343; }
+.ff-dialog-footer { display: flex; gap: 10px; position: sticky; bottom: -22px; padding: 14px 0; background: #fffcf7; border-top: 1px solid #ddd5e7; }
+.ff-dialog-footer button { flex: 1; }
+.ff-dialog-fields { display: grid; gap: 12px; margin-top: 14px; }
+.ff-final-score { padding: 16px; border-radius: 12px; background: #eee4fa; font-weight: 750; text-align: center; }
+.ff-edit-tools summary { cursor: pointer; margin: 12px 0; font-size: .85rem; font-weight: 650; }
+.ff-clock { flex-wrap: wrap; }
+.ff-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); }
+@media (max-width: 560px) {
+  .ff-dialog { padding: 16px; border-radius: 18px; }
+  .ff-dialog-footer { bottom: -16px; }
+  .ff-score-display { padding: 12px; gap: 10px; }
+  .ff-score-display > div + div { padding-left: 10px; }
+  .ff-score-display strong { font-size: 2.6rem; }
+}

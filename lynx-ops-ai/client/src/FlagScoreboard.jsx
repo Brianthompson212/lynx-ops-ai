@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { GAME_EVENT_LABELS, gameScore, gameStats, saveGameEvent, toggleGameEvent, archiveGame } from './flagGame'
-import { duration } from './flagFootball'
+import { duration, activePlayerIds } from './flagFootball'
+import FlagDialog from './FlagDialog'
 
 const statColumns = [
   ['flagPull', 'Flag pulls'], ['flagPullAssist', 'Pull assists'], ['td', 'TDs'], ['tdAssist', 'TD assists'],
@@ -14,6 +15,11 @@ export default function FlagScoreboard({ team, updateTeam }) {
   const [showStats, setShowStats] = useState(false)
   const [showLog, setShowLog] = useState(false)
   const [correction, setCorrection] = useState(null)
+  const [finishing, setFinishing] = useState(false)
+  const [nextOpponent, setNextOpponent] = useState('')
+  const [keepLineup, setKeepLineup] = useState(true)
+  const [message, setMessage] = useState('')
+  const active = activePlayerIds(team)
   const game = (team.gameHistory || []).find((g) => g.id === selectedGameId) || team.game
   const archived = game.id !== team.game.id
   const players = archived ? game.players : team.players
@@ -37,7 +43,7 @@ export default function FlagScoreboard({ team, updateTeam }) {
   function saveEvent() {
     try {
       const next = saveGameEvent(game, draft, players, archived ? game.clock : team.clock)
-      updateGame(next); setDraft(null); setError('')
+      updateGame(next); setDraft(null); setError(''); setMessage(draft.id ? 'Play updated.' : draft.type === 'flagPull' ? 'Flag pull recorded.' : 'Score added.')
     } catch (err) { setError(err.message) }
   }
 
@@ -64,7 +70,7 @@ export default function FlagScoreboard({ team, updateTeam }) {
     window.setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
-  const creditPlayers = [...players]
+  const creditPlayers = [...players].sort((a, b) => Number(active.has(b.id)) - Number(active.has(a.id)))
   for (const [id, name] of [[draft?.playerId, draft?.playerName], [draft?.assistId, draft?.assistName]]) {
     if (id && !creditPlayers.some((p) => p.id === id)) creditPlayers.push({ id, name: name || 'Former player' })
   }
@@ -72,53 +78,73 @@ export default function FlagScoreboard({ team, updateTeam }) {
   return <section className="ff-scoring" aria-label="Scoreboard and game stats">
     <div className="ff-score-heading">
       <h3>{archived ? 'Saved game' : 'Live scoreboard'}</h3>
-      <label>Game<select aria-label="Scoreboard game" value={archived ? game.id : ''} onChange={(e) => {
-        setSelectedGameId(e.target.value); setDraft(null); setCorrection(null); setError('')
-      }}><option value="">Current game</option>{(team.gameHistory || []).slice().reverse().map((g) => <option key={g.id} value={g.id}>{g.date} · {g.name} vs {g.opponent}</option>)}</select></label>
+      <label>Saved games<select aria-label="Scoreboard game" value={archived ? game.id : ''} onChange={(e) => {
+        setSelectedGameId(e.target.value); setMessage(''); setDraft(null); setCorrection(null); setError('')
+      }}><option value="">Live game</option>{(team.gameHistory || []).slice().reverse().map((g) => <option key={g.id} value={g.id}>{g.date} · {g.name} vs {g.opponent}</option>)}</select></label>
     </div>
-    <div className="ff-score-display" aria-live="polite">
-      <div><span>{team.name}</span><strong aria-label={`${team.name} score`}>{score.own}</strong></div>
-      <span className="ff-score-vs">vs</span>
-      <div><span>{game.opponent || 'Opponent'}</span><strong aria-label="Opponent score">{score.opponent}</strong></div>
+    {archived && <div className="ff-notice">Viewing a saved game. <button type="button" onClick={() => { setSelectedGameId(''); setMessage(''); setShowStats(false); setShowLog(false) }}>Back to live game</button></div>}
+    <div className="ff-score-display">
+      {['own', 'opponent'].map((side, index) => <div key={side}>
+        {index === 1 && <span className="ff-sr-only">versus</span>}
+        <span>{side === 'own' ? team.name : game.opponent || 'Opponent'}</span>
+        <strong aria-label={side === 'own' ? team.name + ' score' : 'Opponent score'}>{score[side]}</strong>
+        <button type="button" onClick={() => beginEvent('td', side)}>{archived ? 'Add missed score' : '+ Score'}</button>
+      </div>)}
     </div>
-    <div className="ff-score-actions">
-      <button type="button" onClick={() => beginEvent('flagPull')}>+ Flag pull / tackle</button>
-      <button type="button" onClick={() => beginEvent('td')}>+ TD</button>
-      <button type="button" onClick={() => beginEvent('extraPoint', 'own', 1)}>+ 1-point conversion</button>
-      <button type="button" onClick={() => beginEvent('extraPoint', 'own', 2)}>+ 2-point conversion</button>
-      <button type="button" onClick={() => beginEvent('td', 'opponent')}>+ Opponent score</button>
-      <button type="button" onClick={() => { setDraft(null); setError(''); setCorrection({ side: 'own', total: score.own, note: '' }) }}>Correct score</button>
+    <div className="ff-quick-actions">
+      <button type="button" className="ff-primary" onClick={() => beginEvent('flagPull')}>+ Flag pull</button>
+      <button type="button" onClick={() => { setError(''); setCorrection({ side: 'own', total: score.own, note: '' }) }}>Fix score</button>
+      {!archived && <button type="button" onClick={() => { setNextOpponent(''); setKeepLineup(true); setFinishing(true) }}>End game / Next game</button>}
     </div>
+    {message && <p role="status" className="ff-notice">{message}</p>}
     <div className="ff-row">
-      <button type="button" aria-expanded={showLog} onClick={() => setShowLog(!showLog)}>Game log ({game.events.filter((e) => !e.voided).length})</button>
+      <button type="button" aria-expanded={showLog} onClick={() => setShowLog(!showLog)}>Recent plays ({game.events.filter((e) => !e.voided).length})</button>
       <button type="button" aria-expanded={showStats} onClick={() => setShowStats(!showStats)}>Player stats</button>
-      <button type="button" onClick={downloadStats}>Download post-game report</button>
+      <button type="button" onClick={downloadStats}>Download report</button>
     </div>
-    {error && <p className="ff-error" role="alert">{error}</p>}
-    {draft && <div className="ff-panel" role="group" aria-label="Record game event">
-      <h4>{draft.id ? 'Edit game entry' : 'Record game entry'}</h4>
-      <div className="ff-row">
-        <label>Category<select value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value, points: e.target.value === 'td' ? 6 : e.target.value === 'extraPoint' ? 1 : 0 })}>{Object.entries(GAME_EVENT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-        <label>Credit team<select value={draft.side} onChange={(e) => setDraft({ ...draft, side: e.target.value, playerId: '', assistId: '' })}><option value="own">{team.name}</option><option value="opponent">{game.opponent || 'Opponent'}</option></select></label>
-        {draft.type !== 'flagPull' && <label>Points<input type="number" step="1" min={draft.type === 'adjustment' ? -999 : 0} max="999" value={draft.points} onChange={(e) => setDraft({ ...draft, points: e.target.value })} /></label>}
-      </div>
-      {draft.side === 'own' && draft.type !== 'adjustment' && <div className="ff-row">
-        <label>Player credit<select value={draft.playerId} onChange={(e) => setDraft({ ...draft, playerId: e.target.value, assistId: e.target.value === draft.assistId ? '' : draft.assistId })}><option value="">Unassigned / credit later</option>{creditPlayers.map((p) => <option key={p.id} value={p.id}>{p.name}{p.number ? ` #${p.number}` : ''}</option>)}</select></label>
-        <label>Assist credit<select value={draft.assistId} onChange={(e) => setDraft({ ...draft, assistId: e.target.value })}><option value="">No assist</option>{creditPlayers.filter((p) => p.id !== draft.playerId).map((p) => <option key={p.id} value={p.id}>{p.name}{p.number ? ` #${p.number}` : ''}</option>)}</select></label>
+    {error && !draft && !correction && <p className="ff-error" role="alert">{error}</p>}
+    {draft && <FlagDialog title={draft.id ? 'Edit play' : draft.type === 'flagPull' ? 'Who pulled the flag?' : (draft.side === 'own' ? team.name : game.opponent || 'Opponent') + ' scored!'} onClose={() => { setDraft(null); setError('') }}>
+      {error && <p className="ff-error" role="alert">{error}</p>}
+      {draft.type !== 'flagPull' && draft.type !== 'adjustment' && <div className="ff-choice-grid" aria-label="Scoring play">
+        {[['td', 6, 'Touchdown', '+6'], ['extraPoint', 1, 'Extra point', '+1'], ['extraPoint', 2, 'Extra point', '+2']].map(([type, points, label, amount]) => <button key={amount} type="button" aria-pressed={draft.type === type && Number(draft.points) === points} onClick={() => setDraft({ ...draft, type, points })}><strong>{amount}</strong><span>{label}</span></button>)}
       </div>}
-      <label>Note / correction reason<input maxLength={300} value={draft.note} placeholder="e.g. TD overturned, penalty, credit changed" onChange={(e) => setDraft({ ...draft, note: e.target.value })} /></label>
-      <p className="ff-hint">{draft.type === 'adjustment' ? 'Score adjustments change only the scoreboard. Edit or remove the original event to change player stats too.' : 'Player credit and assists count once per event. Assists do not add extra points to the score.'}</p>
-      <div className="ff-row"><button type="button" onClick={saveEvent}>{draft.id ? 'Save changes' : 'Save entry'}</button><button type="button" onClick={() => { setDraft(null); setError('') }}>Cancel</button></div>
-    </div>}
-    {correction && <div className="ff-panel" role="group" aria-label="Correct scoreboard">
-      <h4>Correct scoreboard</h4><div className="ff-row"><label>Team to correct<select value={correction.side} onChange={(e) => setCorrection({ ...correction, side: e.target.value, total: score[e.target.value] })}><option value="own">{team.name}</option><option value="opponent">{game.opponent || 'Opponent'}</option></select></label>
-        <label>Corrected score<input type="number" min="0" max="999" step="1" value={correction.total} onChange={(e) => setCorrection({ ...correction, total: e.target.value })} /></label></div>
-      <label>Correction reason<input maxLength={300} value={correction.note} placeholder="Penalty or changed call" onChange={(e) => setCorrection({ ...correction, note: e.target.value })} /></label>
-      <p className="ff-hint">This changes only the score. To reverse a TD or extra point and its player credit, use Remove in the game log.</p>
-      <div className="ff-row"><button type="button" onClick={correctScore}>Save corrected score</button><button type="button" onClick={() => { setCorrection(null); setError('') }}>Cancel</button></div>
-    </div>}
-    {showLog && <div className="ff-panel"><h4>Game log · edit, remove, or restore a call</h4>
-      {!game.events.length && <p>No entries yet. Record a score or flag pull above.</p>}
+      {draft.side === 'own' && draft.type !== 'adjustment' && <>
+        {draft.type !== 'flagPull' && <h4>Who scored?</h4>}
+        <div className="ff-player-picks" aria-label="Choose player">
+          {creditPlayers.map((p) => <button type="button" key={p.id} aria-pressed={draft.playerId === p.id} onClick={() => setDraft({ ...draft, playerId: p.id, assistId: draft.assistId === p.id ? '' : draft.assistId })}><strong>{p.number ? '#' + p.number + ' ' : ''}{p.name}</strong><small>{!archived && active.has(p.id) ? 'On field' : !p.available ? 'Not playing today' : ''}</small></button>)}
+          <button type="button" aria-pressed={!draft.playerId} onClick={() => setDraft({ ...draft, playerId: '' })}>Credit later</button>
+        </div>
+      </>}
+      <details className="ff-game-settings"><summary>More details · assist, note, or custom points</summary><div className="ff-dialog-fields">
+        {draft.side === 'own' && draft.type !== 'adjustment' && <label>Assist (optional)<select value={draft.assistId} onChange={(e) => setDraft({ ...draft, assistId: e.target.value })}><option value="">No assist</option>{creditPlayers.filter((p) => p.id !== draft.playerId).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>}
+        <label>Play type<select value={draft.type} onChange={(e) => setDraft({ ...draft, type: e.target.value, points: e.target.value === 'td' ? 6 : e.target.value === 'extraPoint' ? 1 : 0 })}>{Object.entries(GAME_EVENT_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <label>Team<select value={draft.side} onChange={(e) => setDraft({ ...draft, side: e.target.value, playerId: '', assistId: '' })}><option value="own">{team.name}</option><option value="opponent">{game.opponent || 'Opponent'}</option></select></label>
+        {draft.type !== 'flagPull' && <label>Points<input type="number" inputMode="numeric" step="1" value={draft.points} onChange={(e) => setDraft({ ...draft, points: e.target.value })} /></label>}
+        <label>Note (optional)<input maxLength={300} value={draft.note} onChange={(e) => setDraft({ ...draft, note: e.target.value })} /></label>
+      </div></details>
+      <footer className="ff-dialog-footer"><button type="button" onClick={() => { setDraft(null); setError('') }}>Cancel</button><button type="button" className="ff-primary" onClick={saveEvent}>{draft.id ? 'Save changes' : draft.type === 'flagPull' ? 'Save flag pull' : 'Add ' + draft.points + ' points'}</button></footer>
+    </FlagDialog>}
+    {correction && <FlagDialog title="Fix the score" onClose={() => { setCorrection(null); setError('') }}>
+      {error && <p className="ff-error" role="alert">{error}</p>}
+      <div className="ff-switch">{['own', 'opponent'].map((side) => <button type="button" key={side} aria-pressed={correction.side === side} onClick={() => setCorrection({ ...correction, side, total: score[side] })}>{side === 'own' ? team.name : game.opponent || 'Opponent'}</button>)}</div>
+      <label>What should their score be?<input type="number" inputMode="numeric" min="0" max="999" step="1" value={correction.total} onChange={(e) => setCorrection({ ...correction, total: e.target.value })} /></label>
+      <p className="ff-hint">Call reversed? Remove that play from Recent plays to fix both the score and player stats.</p>
+      <button type="button" onClick={() => { setCorrection(null); setShowLog(true); setError('') }}>Find a play to reverse</button>
+      <footer className="ff-dialog-footer"><button type="button" onClick={() => { setCorrection(null); setError('') }}>Cancel</button><button type="button" className="ff-primary" onClick={correctScore}>Save score</button></footer>
+    </FlagDialog>}
+    {finishing && <FlagDialog title="Ready for the next game?" onClose={() => setFinishing(false)}>
+      <p className="ff-final-score">{team.name} {score.own} – {score.opponent} {game.opponent}</p>
+      <p>We’ll save this game’s score, player stats, and playing time in Saved games.</p>
+      <p>The next game starts at 0–0 with a stopped clock and fresh stats. Your roster, plays, and drive cards stay ready.</p>
+      <label>Next opponent (optional)<input value={nextOpponent} maxLength={60} placeholder="Opponent name" onChange={(e) => setNextOpponent(e.target.value)} /></label>
+      <label className="ff-check"><input type="checkbox" checked={keepLineup} onChange={(e) => setKeepLineup(e.target.checked)} />Keep my current lineup</label>
+      <button type="button" onClick={downloadStats}>Download this game’s report</button>
+      <footer className="ff-dialog-footer"><button type="button" onClick={() => setFinishing(false)}>Keep playing</button><button type="button" className="ff-primary" onClick={() => {
+        updateTeam((current) => archiveGame(current, { opponent: nextOpponent, keepLineup })); setFinishing(false); setDraft(null); setCorrection(null); setError(''); setShowStats(false); setShowLog(false); setMessage('Game saved. Ready for kickoff! Start the clock when play begins.')
+      }}>Save game & reset</button></footer>
+    </FlagDialog>}
+    {showLog && <div className="ff-panel"><h4>Recent plays · correct a call</h4>
+      {!game.events.length && <p>No plays yet. Tap a team’s score button or record a flag pull.</p>}
       <ol className="ff-game-log">{game.events.slice().reverse().map((event) => <li className={event.voided ? 'ff-voided' : ''} key={event.id}>
         <div><strong>{GAME_EVENT_LABELS[event.type]} · {event.side === 'own' ? team.name : game.opponent} {event.voided ? '· Removed' : ''}</strong>
           <p>{duration(event.clock)} · {event.points > 0 ? '+' : ''}{event.points} points{event.playerId ? ` · ${event.playerName}` : event.side === 'own' && event.type !== 'adjustment' ? ' · Credit unassigned' : ''}{event.assistId ? ` · Assist: ${event.assistName}` : ''}</p>{event.note && <p>{event.note}</p>}</div>
@@ -133,11 +159,8 @@ export default function FlagScoreboard({ team, updateTeam }) {
         <tbody>{stats.rows.map((row) => <tr key={row.id}><th scope="row">{row.name}</th>{statColumns.map(([key]) => <td key={key}>{row[key]}</td>)}<td>{duration(row.fieldSeconds)}</td><td>{duration(row.benchSeconds)}</td></tr>)}</tbody>
         <tfoot><tr><th scope="row">Team totals</th>{statColumns.map(([key]) => <td key={key}>{stats.totals[key]}</td>)}<td>—</td><td>—</td></tr></tfoot></table></div>
     </div>}
-    <details className="ff-game-settings"><summary>Game details &amp; {archived ? 'saved result' : 'finish game'}</summary><div className="ff-row">
+    <details className="ff-game-settings"><summary>Game details · opponent, date &amp; name</summary><div className="ff-row">
       <label>Game label<input value={game.name} maxLength={80} onChange={(e) => updateGame({ name: e.target.value })} /></label><label>Opponent name<input value={game.opponent} maxLength={60} onChange={(e) => updateGame({ opponent: e.target.value })} /></label><label>Game date<input type="date" value={game.date} onChange={(e) => updateGame({ date: e.target.value })} /></label>
-    </div>{!archived && <><p className="ff-hint">Finish saves this game’s score, stats, and playing times, then starts a fresh game. Rosters, formations, and plays stay ready.</p><button type="button" onClick={() => {
-      if (!window.confirm('Save this game and start a new one with scores, stats, and timers at zero?')) return
-      updateTeam(archiveGame); setDraft(null); setCorrection(null); setError(''); setShowStats(false); setShowLog(false)
-    }}>Finish game &amp; start next</button></>}</details>
+    </div></details>
   </section>
 }
