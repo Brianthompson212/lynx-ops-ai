@@ -35,6 +35,7 @@ import {
   updateProfileRole,
 } from './api'
 import { GOOGLE_API_KEY, GOOGLE_CALENDAR_ID, GOOGLE_CLIENT_ID } from './api'
+import FlagFootballBoard from './FlagFootballBoard'
 
 const clubLogoPath = '/lynx-logo.png'
 const isFileField = (field) => field.type === 'file'
@@ -2724,6 +2725,7 @@ function App() {
                     onChange={(event) => {
                       setSubBoardSport(event.target.value)
                       setSelectedRosterSport(event.target.value)
+                      setSubBoardRunning(false)
                     }}
                   >
                     {Object.entries(subBoardSports).map(([value, sport]) => (
@@ -2731,7 +2733,7 @@ function App() {
                     ))}
                   </select>
                 </label>
-                <label htmlFor="sub-board-division">
+                {subBoardSport !== 'flagFootball' && <><label htmlFor="sub-board-division">
                   <span>Division roster</span>
                   <select id="sub-board-division" value={selectedDivision} onChange={(event) => setSelectedDivision(event.target.value)}>
                     {divisionNames.map((division) => (
@@ -2751,8 +2753,10 @@ function App() {
                   <Users size={18} aria-hidden="true" />
                   <span>Load Roster</span>
                 </button>
+                </>}
               </div>
 
+              {subBoardSport === 'flagFootball' ? <FlagFootballBoard rosters={rosters} /> : <>
               <div className="roster-entry">
                 <label htmlFor="sub-board-player">
                   <span>Add player</span>
@@ -3031,6 +3035,7 @@ function App() {
                   </div>
                 )}
               </div>
+              </>}
             </div>
           ) : isScheduleAssistant ? (
             <div className="schedule-assistant">
