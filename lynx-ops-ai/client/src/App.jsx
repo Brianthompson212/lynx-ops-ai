@@ -1108,13 +1108,25 @@ function App() {
     }))
   }
 
+  const handleAdminRequestError = (requestError) => {
+    if (requestError.code === 'ADMIN_SESSION_EXPIRED') {
+      setAdminToken('')
+      setDirectory({ invites: [], profiles: [] })
+      setDirectoryStatus('')
+      setDirectoryError('')
+      setAdminLoginError(requestError.message)
+      return
+    }
+    setDirectoryError(requestError.message)
+  }
+
   const loadDirectory = async () => {
     if (!adminToken && !getStoredAdminToken()) return
     setDirectoryError('')
     try {
       setDirectory(await getAdminDirectory())
     } catch (loadError) {
-      setDirectoryError(loadError.message)
+      handleAdminRequestError(loadError)
     }
   }
 
@@ -1162,7 +1174,7 @@ function App() {
       setInviteForm(initialInviteForm)
       await loadDirectory()
     } catch (inviteError) {
-      setDirectoryError(inviteError.message)
+      handleAdminRequestError(inviteError)
     }
   }
 
@@ -1245,7 +1257,7 @@ function App() {
       setDirectoryStatus(`Profile role updated to ${role}.`)
       await loadDirectory()
     } catch (roleError) {
-      setDirectoryError(roleError.message)
+      handleAdminRequestError(roleError)
     }
   }
 
@@ -2453,7 +2465,7 @@ function App() {
                   <ShieldCheck size={20} aria-hidden="true" />
                   <span>Log In</span>
                 </button>
-                <p className="privacy-note">Set ADMIN_EMAIL, ADMIN_PASSWORD, and AUTH_SECRET in the server environment before deploying.</p>
+                <p className="privacy-note">Sign in with your administrator account to create invitations and manage users.</p>
               </form>
             </div>
           ) : coachRole !== 'admin' ? (

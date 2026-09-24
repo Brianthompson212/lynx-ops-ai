@@ -1,10 +1,10 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001'
+const API_BASE_URL = import.meta.env?.VITE_API_BASE_URL ?? 'http://localhost:3001'
 const ADMIN_TOKEN_KEY = 'lynx-admin-token'
 const USER_TOKEN_KEY = 'lynx-user-token'
 const USER_PROFILE_KEY = 'lynx-user-profile'
-export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? ''
-export const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY ?? ''
-export const GOOGLE_CALENDAR_ID = import.meta.env.VITE_GOOGLE_CALENDAR_ID ?? ''
+export const GOOGLE_CLIENT_ID = import.meta.env?.VITE_GOOGLE_CLIENT_ID ?? ''
+export const GOOGLE_API_KEY = import.meta.env?.VITE_GOOGLE_API_KEY ?? ''
+export const GOOGLE_CALENDAR_ID = import.meta.env?.VITE_GOOGLE_CALENDAR_ID ?? ''
 
 export function getStoredAdminToken() {
   return localStorage.getItem(ADMIN_TOKEN_KEY) ?? ''
@@ -118,6 +118,16 @@ export async function loginUser(credentials) {
   return payload
 }
 
+function adminRequestError(response, payload, fallback) {
+  if (response.status === 401) {
+    clearStoredAdminToken()
+    const error = new Error('Your admin session expired or is no longer valid. Please sign in again. Your invite details have been kept.')
+    error.code = 'ADMIN_SESSION_EXPIRED'
+    return error
+  }
+  return new Error(payload.error ?? fallback)
+}
+
 export async function getAdminDirectory() {
   const response = await fetch(`${API_BASE_URL}/api/admin/directory`, {
     headers: adminHeaders(),
@@ -125,7 +135,7 @@ export async function getAdminDirectory() {
   const payload = await response.json().catch(() => ({}))
 
   if (!response.ok) {
-    throw new Error(payload.error ?? 'Unable to load directory.')
+    throw adminRequestError(response, payload, 'Unable to load directory.')
   }
 
   return payload
@@ -140,7 +150,7 @@ export async function createInvite(invite) {
   const payload = await response.json().catch(() => ({}))
 
   if (!response.ok) {
-    throw new Error(payload.error ?? 'Unable to create invite.')
+    throw adminRequestError(response, payload, 'Unable to create invite.')
   }
 
   return payload
@@ -183,7 +193,7 @@ export async function updateProfileRole(profileId, role) {
   const payload = await response.json().catch(() => ({}))
 
   if (!response.ok) {
-    throw new Error(payload.error ?? 'Unable to update profile role.')
+    throw adminRequestError(response, payload, 'Unable to update profile role.')
   }
 
   return payload.profile
